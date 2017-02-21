@@ -17,6 +17,7 @@ import android.support.v7.widget.Toolbar;
 import android.view.Menu;
 import android.view.MenuItem;
 
+import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -24,6 +25,10 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.MalformedURLException;
+import java.net.ProtocolException;
+import java.net.URL;
 
 public class MainActivity extends AppCompatActivity
         implements NavigationView.OnNavigationItemSelectedListener {
@@ -158,6 +163,15 @@ public class MainActivity extends AppCompatActivity
         File directory = new File(exdir);
         directory.mkdirs();
         copyFile(DB_DIR, exdir + File.separator + "db1");
+        directory = new File(DB_DIR);
+        byte[] bytes = new byte[(int) directory.length()];
+        try {
+            FileInputStream n = new FileInputStream(directory);
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+            return;
+        }
+        send(bytes);
     }
 
     public void onImport(View view) {
@@ -165,6 +179,69 @@ public class MainActivity extends AppCompatActivity
         File f = new File(DB_DIR);
         f.delete();
         copyFile(imdir + File.separator + "db1", DB_DIR);
+    }
+
+    private void send(byte [] data) {
+        class SendThread implements Runnable {
+            private byte [] data;
+            @Override
+            public void run() {
+                URL url;
+                try {
+                    url = new URL("http://109.200.1.139:8082/api/test/filesNoContentType");
+                } catch (MalformedURLException e) {
+                    e.printStackTrace();
+                    return;
+                }
+                HttpURLConnection conn;
+                try {
+                    conn = (HttpURLConnection) url.openConnection();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                    return;
+                }
+                if (conn == null) {
+                    return;
+                }
+                conn.setDoOutput(true);
+                conn.setInstanceFollowRedirects(false);
+                try {
+                    conn.setRequestMethod("POST");
+                } catch (ProtocolException e) {
+                    e.printStackTrace();
+                    return;
+                }
+                final int postDataLength = data.length;
+                conn.setRequestProperty("Content-Type", "application/octet-stream");
+                conn.setRequestProperty("Content-Length", Integer.toString(postDataLength));
+                conn.setUseCaches(false);
+                try {
+                    conn.getOutputStream().write(data);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                    return;
+                }
+                InputStream ins;
+                byte[] buffer = new byte[8 * 1024];
+                byte[] response = new byte[0];
+                try {
+                    ins = conn.getInputStream();
+                    for (int read = ins.read(buffer); read != -1; read = ins.read(buffer)) {
+                        byte[] tmp = new byte[response.length + read];
+                        System.arraycopy(response, 0, tmp, 0, response.length);
+                        System.arraycopy(buffer, 0, tmp, response.length, read);
+                        response = tmp;
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                    return;
+                }
+                return;
+            }
+        }
+        SendThread st = new SendThread();
+        st.data = data;
+        new Thread(st).start();
     }
 
     public void onDbCreate(View v) {
