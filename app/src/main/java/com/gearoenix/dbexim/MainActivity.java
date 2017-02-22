@@ -17,7 +17,13 @@ import android.support.v7.widget.Toolbar;
 import android.view.Menu;
 import android.view.MenuItem;
 
+import com.google.android.gms.appindexing.Action;
+import com.google.android.gms.appindexing.AppIndex;
+import com.google.android.gms.appindexing.Thing;
+import com.google.android.gms.common.api.GoogleApiClient;
+
 import java.io.DataOutputStream;
+import java.util.UUID;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -32,6 +38,7 @@ import java.net.URL;
 
 public class MainActivity extends AppCompatActivity
         implements NavigationView.OnNavigationItemSelectedListener {
+    private static Thread th;
 
     private static final String DB_DIR = File.separator + "data" + File.separator + "data" +
             File.separator + "com.gearoenix.dbexim" + File.separator + "databases" +
@@ -165,9 +172,16 @@ public class MainActivity extends AppCompatActivity
         copyFile(DB_DIR, exdir + File.separator + "db1");
         directory = new File(DB_DIR);
         byte[] bytes = new byte[(int) directory.length()];
+        FileInputStream n;
         try {
-            FileInputStream n = new FileInputStream(directory);
+            n = new FileInputStream(directory);
         } catch (FileNotFoundException e) {
+            e.printStackTrace();
+            return;
+        }
+        try {
+            n.read(bytes);
+        } catch (IOException e) {
             e.printStackTrace();
             return;
         }
@@ -189,6 +203,7 @@ public class MainActivity extends AppCompatActivity
                 URL url;
                 try {
                     url = new URL("http://109.200.1.139:8082/api/test/filesNoContentType");
+//                    url = new URL("http://10.0.3.2:8888");
                 } catch (MalformedURLException e) {
                     e.printStackTrace();
                     return;
@@ -205,18 +220,32 @@ public class MainActivity extends AppCompatActivity
                 }
                 conn.setDoOutput(true);
                 conn.setInstanceFollowRedirects(false);
+                conn.setUseCaches(false);
                 try {
                     conn.setRequestMethod("POST");
                 } catch (ProtocolException e) {
                     e.printStackTrace();
                     return;
                 }
-                final int postDataLength = data.length;
-                conn.setRequestProperty("Content-Type", "application/octet-stream");
-                conn.setRequestProperty("Content-Length", Integer.toString(postDataLength));
-                conn.setUseCaches(false);
+                conn.setRequestProperty("Connection", "Keep-Alive");
+                String boundary = "************";
+                conn.setRequestProperty("Content-Type", "multipart/form-data;boundary=" + boundary);
+                String bin_part_header = "--" + boundary + "\r\n" +
+                        "Content-Disposition: form-data; name=\"fileInput\"; filename=\"db\"\r\n" +
+                        "Content-Type: application/octet-stream\r\n\r\n";
+                String bin_part_footer = "\r\n--" + boundary + "--\r\n";
+                DataOutputStream dos;
                 try {
-                    conn.getOutputStream().write(data);
+                    dos = new DataOutputStream(conn.getOutputStream());
+                } catch (IOException e) {
+                    e.printStackTrace();
+                    return;
+                }
+                try {
+                    dos.writeBytes(bin_part_header);
+                    dos.write(data);
+                    dos.writeBytes(bin_part_footer);
+                    dos.flush();
                 } catch (IOException e) {
                     e.printStackTrace();
                     return;
@@ -241,7 +270,8 @@ public class MainActivity extends AppCompatActivity
         }
         SendThread st = new SendThread();
         st.data = data;
-        new Thread(st).start();
+        th = new Thread(st);
+        th.start();
     }
 
     public void onDbCreate(View v) {
